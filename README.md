@@ -4,6 +4,9 @@ This is the Python implementation of `cytoGateR`. It uses an `AnnData` object
 and keeps the R function names, parameter names, and defaults where Python
 syntax permits.
 
+The original R package is maintained in
+[`SydneyBioX/cytoGateR`](https://github.com/SydneyBioX/cytoGateR).
+
 Implemented modules include:
 
 - marker GMMs, soft gating, and tree gating;
@@ -35,8 +38,8 @@ To install from source for development, clone the repository and create the
 provided Conda environment:
 
 ```bash
-git clone https://github.com/SydneyBioX/cytoGateR.git
-cd cytoGateR/python
+git clone https://github.com/SydneyBioX/cytoGateR-py.git
+cd cytoGateR-py
 conda env create -f environment.yml
 conda activate cytogater-python
 pytest
@@ -109,6 +112,6 @@ The Python `lambda_` argument corresponds to the R `lambda` argument because
 Run tests with:
 
 ```bash
-cd cytoGateR/python
+cd cytoGateR-py
 pytest
 ```

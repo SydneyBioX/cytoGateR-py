@@ -5,9 +5,10 @@ Summary: Python implementation of cytoGateR marker-aware cell annotation
 Author: Matthew Li, Harry Robertson, Nikhil Karthik, Jean Yang, Lijia Yu
 Maintainer-email: Lijia Yu <yulj2010@gmail.com>
 License-Expression: GPL-2.0-only
-Project-URL: Homepage, https://github.com/SydneyBioX/cytoGateR
-Project-URL: Repository, https://github.com/SydneyBioX/cytoGateR
-Project-URL: Issues, https://github.com/SydneyBioX/cytoGateR/issues
+Project-URL: Homepage, https://github.com/SydneyBioX/cytoGateR-py
+Project-URL: Repository, https://github.com/SydneyBioX/cytoGateR-py
+Project-URL: Issues, https://github.com/SydneyBioX/cytoGateR-py/issues
+Project-URL: R package, https://github.com/SydneyBioX/cytoGateR
 Classifier: Development Status :: 3 - Alpha
 Classifier: Intended Audience :: Science/Research
 Classifier: Programming Language :: Python :: 3
@@ -43,6 +44,9 @@ This is the Python implementation of `cytoGateR`. It uses an `AnnData` object
 and keeps the R function names, parameter names, and defaults where Python
 syntax permits.
 
+The original R package is maintained in
+[`SydneyBioX/cytoGateR`](https://github.com/SydneyBioX/cytoGateR).
+
 Implemented modules include:
 
 - marker GMMs, soft gating, and tree gating;
@@ -74,8 +78,8 @@ To install from source for development, clone the repository and create the
 provided Conda environment:
 
 ```bash
-git clone https://github.com/SydneyBioX/cytoGateR.git
-cd cytoGateR/python
+git clone https://github.com/SydneyBioX/cytoGateR-py.git
+cd cytoGateR-py
 conda env create -f environment.yml
 conda activate cytogater-python
 pytest
@@ -148,6 +152,6 @@ The Python `lambda_` argument corresponds to the R `lambda` argument because
 Run tests with:
 
 ```bash
-cd cytoGateR/python
+cd cytoGateR-py
 pytest
 ```
