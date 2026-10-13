@@ -49,6 +49,7 @@ Homepage = "https://github.com/SydneyBioX/cytoGateR-py"
 Repository = "https://github.com/SydneyBioX/cytoGateR-py"
 Issues = "https://github.com/SydneyBioX/cytoGateR-py/issues"
 "R package" = "https://github.com/SydneyBioX/cytoGateR"
+cytoNavigator = "https://github.com/SydneyBioX/cytoNavigator"
 
 [tool.setuptools.packages.find]
 where = ["src"]

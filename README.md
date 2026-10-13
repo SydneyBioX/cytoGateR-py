@@ -1,11 +1,18 @@
-# cytoGateR Python
+# cytoGateR Python <a href="https://github.com/SydneyBioX/cytoGateR"><img src="https://i.imgur.com/BmRpXzR.png" title="cytoGateR R package hex sticker" align="right" height="138" /></a>
 
 This is the Python implementation of `cytoGateR`. It uses an `AnnData` object
 and keeps the R function names, parameter names, and defaults where Python
 syntax permits.
 
-The original R package is maintained in
-[`SydneyBioX/cytoGateR`](https://github.com/SydneyBioX/cytoGateR).
+## cytoGateR ecosystem
+
+- [`cytoGateR`](https://github.com/SydneyBioX/cytoGateR) — the original R
+  package;
+- [`cytoGateR-py`](https://github.com/SydneyBioX/cytoGateR-py) — this Python
+  implementation, also available from [PyPI](https://pypi.org/project/cytogater/);
+- [`cytoNavigator`](https://github.com/SydneyBioX/cytoNavigator) — a local-first
+  conversational interface for building, reviewing, and running `cytogater`
+  annotation workflows.
 
 Implemented modules include:
 
