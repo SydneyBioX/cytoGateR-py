@@ -4,6 +4,8 @@ This is the Python implementation of `cytoGateR`. It uses an `AnnData` object
 and keeps the R function names, parameter names, and defaults where Python
 syntax permits.
 
+Documentation: <https://sydneybiox.github.io/cytoGateR-py/>
+
 ## cytoGateR ecosystem
 
 - [`cytoGateR`](https://github.com/SydneyBioX/cytoGateR) — the original R
