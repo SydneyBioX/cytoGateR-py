@@ -30,6 +30,10 @@ napoleon_google_docstring = False
 nb_execution_mode = "force"
 nb_execution_timeout = 600
 nb_execution_raise_on_error = True
+# The complete workflow uses the R package's bundled demo data, which lives in
+# a sibling repository. Its saved, locally validated outputs are published but
+# it is not re-executed on GitHub's standalone checkout.
+nb_execution_excludepatterns = ["full_pipeline.ipynb"]
 
 myst_enable_extensions = ["colon_fence", "dollarmath"]
 myst_heading_anchors = 3

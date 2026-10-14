@@ -27,3 +27,7 @@ jupyter lab examples/full_pipeline.ipynb
 
 The final cell saves the converted, annotated object as
 `cytogater_r_demo_python.h5ad`.
+
+This notebook is also published, with its saved outputs, as the website's
+complete-workflow tutorial. Re-run it locally after changing the pipeline so
+the website shows current results.
