@@ -1,0 +1,25 @@
+:root {
+  --cyto-green: #087f73;
+  --cyto-green-dark: #123c35;
+  --cyto-amber: #e6a04b;
+}
+
+.bd-header {
+  background-color: var(--cyto-green-dark) !important;
+  border-bottom: 3px solid var(--cyto-green);
+}
+
+a,
+.toc-entry a.nav-link:hover,
+.toc-entry a.nav-link.active {
+  color: var(--cyto-green);
+}
+
+.btn-primary {
+  background-color: var(--cyto-green);
+  border-color: var(--cyto-green);
+}
+
+div.cell_output pre {
+  border-left: 3px solid var(--cyto-amber);
+}
