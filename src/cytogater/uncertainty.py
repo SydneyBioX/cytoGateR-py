@@ -6,6 +6,31 @@ from sklearn.neighbors import NearestNeighbors
 
 
 def calculate_uncertainty(prob_mat, spe, sample_col="sample_id", k_spatial=15):
+    """Calculate probability and spatial uncertainty for every cell.
+
+    Parameters
+    ----------
+    prob_mat : pandas.DataFrame or array-like
+        Cell-by-cell-type probabilities. Data-frame rows are aligned to
+        ``spe.obs_names``.
+    spe : anndata.AnnData
+        Annotated object with coordinates in ``spe.obsm["spatial"]``.
+    sample_col : str, default="sample_id"
+        ``spe.obs`` column defining independent spatial samples.
+    k_spatial : int, default=15
+        Nearest neighbours used for spatial label discordance.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Entropy, Gini impurity, top-two probability margin uncertainty, and
+        within-sample spatial discordance for each cell.
+
+    Notes
+    -----
+    Spatial discordance is missing for samples with at most ``k_spatial``
+    cells.
+    """
     probabilities = pd.DataFrame(prob_mat).reindex(spe.obs_names)
     values = probabilities.to_numpy(float)
     labels = probabilities.columns[
@@ -43,6 +68,28 @@ def calculate_spatial_prior_labels(
     protect_threshold=0.85,
     out_col="knn_spatial_label",
 ):
+    """Refine low-confidence predictions with a local spatial prior.
+
+    Parameters
+    ----------
+    spe : anndata.AnnData
+        Object with coordinates in ``spe.obsm["spatial"]``; modified in place.
+    prob_mat : pandas.DataFrame or array-like
+        Cell-by-cell-type probability matrix.
+    k_spatial : int, default=50
+        Number of spatial neighbours used to estimate the local prior.
+    lambda_ : float, default=0.2
+        Exponent controlling the influence of the neighbour prior.
+    protect_threshold : float, default=0.85
+        Predictions at or above this confidence are never changed.
+    out_col : str, default="knn_spatial_label"
+        Destination label column in ``spe.obs``.
+
+    Returns
+    -------
+    anndata.AnnData
+        The same object with spatially refined labels.
+    """
     probabilities = pd.DataFrame(prob_mat).reindex(spe.obs_names)
     values = probabilities.to_numpy(float)
     classes = probabilities.columns.to_numpy()

@@ -17,7 +17,37 @@ def predict_wknn_multi(
     return_matrix=False,
     chunk_size=10000,
 ):
-    """Port of R ``predict_wknn_multi`` for cells x markers matrices."""
+    """Predict labels with a weighted k-nearest-neighbour classifier.
+
+    Parameters
+    ----------
+    train_data, test_data : array-like
+        Training and query matrices with cells in rows and identical marker
+        columns.
+    train_labels : array-like
+        One class label per training row. Categorical levels are preserved.
+    k : int, default=5
+        Number of neighbours.
+    method : {"pearson", "spearman", "cosine", "euclidean"}, default="pearson"
+        Similarity or distance measure used to find and weight neighbours.
+    return_matrix : bool, default=False
+        Include the complete cell-by-class probability matrix.
+    chunk_size : int or None, default=10000
+        Number of query cells processed together. Cosine mode currently uses
+        all query cells in one block.
+
+    Returns
+    -------
+    dict
+        ``labels`` and winning ``probs`` for query cells. When requested,
+        ``prob_matrix`` and its compatibility alias ``prob_mat`` contain the
+        full probability data frame.
+
+    Raises
+    ------
+    ValueError
+        If matrix dimensions differ or ``method`` is unsupported.
+    """
     train = np.asarray(train_data, dtype=float)
     test = np.asarray(test_data, dtype=float)
     labels = np.asarray(train_labels).astype(str)
@@ -131,7 +161,46 @@ def train_custom_knn(
     chunk_size=250,
     BPPARAM=None,
 ):
-    """Clean reference labels by repeated CV and return a kNN reference."""
+    """Clean reference labels by repeated cross-validation and fit kNN.
+
+    Parameters
+    ----------
+    spe : anndata.AnnData
+        Annotated cells-by-markers object, modified in place.
+    label_col : str, default="cutoff_label"
+        ``spe.obs`` column containing initial reference labels.
+    assay_name : str or None, default="exprs"
+        Expression layer, or ``None``/``"X"`` for ``spe.X``.
+    unknown_label : str, default="Unknown"
+        Label excluded from reference training.
+    features : "all" or sequence of str, default="all"
+        Marker features used by the classifier.
+    cv_folds : int, default=5
+        Number of stratified folds per repeat.
+    repeats : int, default=10
+        Number of repeated cross-validation rounds.
+    agreement_thresh : float, default=0.8
+        Minimum fraction of correct out-of-fold predictions required to retain
+        a reference cell.
+    k : int, default=5
+        Number of neighbours.
+    method : {"pearson", "spearman", "cosine", "euclidean"}, default="pearson"
+        Neighbour similarity or distance measure.
+    seed : int or None, default=None
+        Random seed for fold assignment.
+    chunk_size : int, default=250
+        Query block size during cross-validation.
+    BPPARAM : object or None, default=None
+        Accepted for R API compatibility; currently ignored.
+
+    Returns
+    -------
+    dict
+        Annotated ``spe``, model/reference matrices, retained labels,
+        cross-validated probabilities, features, agreement rates, and retained
+        cell names. Cleaned labels are stored in
+        ``spe.obs["cleaned_core_label"]``.
+    """
     del BPPARAM
     frame = expression_frame(spe, assay_name)
     features_used = (
@@ -214,6 +283,46 @@ def predict_unknown_with_knn(
     dist_method="pearson",
     chunk_size=10000,
 ):
+    """Fill unknown labels from a cleaned weighted-kNN reference.
+
+    Parameters
+    ----------
+    spe : anndata.AnnData
+        Object containing cells to predict; modified in place.
+    knn_ref : dict
+        Result from :func:`train_custom_knn`, or a compatible model mapping.
+    assay_name : str or None, default="exprs"
+        Expression layer, or ``None``/``"X"`` for ``spe.X``.
+    label_col : str, default="cutoff_label"
+        Existing labels; only missing or ``unknown_label`` cells are replaced.
+    out_col : str, default="knn_label_filled"
+        Destination for the combined existing and predicted labels.
+    pred_col : str, default="knn_pred"
+        Destination for predictions on replaced cells only.
+    unknown_label : str, default="Unknown"
+        Label marking cells that require prediction.
+    unassigned_label : str, default="Unassigned"
+        Label used when prediction confidence is below ``threshold``.
+    threshold : float, default=0.6
+        Minimum winning class probability.
+    k : int, default=5
+        Number of neighbours.
+    dist_method : {"pearson", "spearman", "cosine", "euclidean"}, default="pearson"
+        Neighbour similarity or distance measure.
+    chunk_size : int, default=10000
+        Query block size.
+
+    Returns
+    -------
+    dict
+        Annotated ``spe`` and probabilities for predicted cells. ``prob_mat``
+        is ``None`` when no cells require prediction.
+
+    Raises
+    ------
+    KeyError
+        If ``label_col`` is absent from ``spe.obs``.
+    """
     frame = expression_frame(spe, assay_name)
     if label_col not in spe.obs:
         raise KeyError(f"label_col {label_col!r} is not present in spe.obs")
@@ -262,6 +371,40 @@ def predict_hierarchical_knn_recursive(
     cells in chunks, then sufficiently confident cells are routed to the left
     or right child.  ``BPPARAM`` is accepted for API parity; Python currently
     executes the ensemble tasks serially.
+
+    Parameters
+    ----------
+    spe : anndata.AnnData
+        Cells to annotate; modified in place.
+    hier_ref : dict
+        Node references from :func:`cytogater.build_hierarchical_reference`.
+    hc_tree : dict
+        Hierarchy from :func:`cytogater.build_lineage_hierarchy`.
+    assay_name : str or None, default="exprs"
+        Expression layer, or ``None``/``"X"`` for ``spe.X``.
+    threshold : float, default=0.7
+        Minimum mean winning probability at each node.
+    agreement_threshold : float, default=0.8
+        Minimum ensemble vote agreement at each node.
+    k : int, default=5
+        Number of neighbours per ensemble task.
+    repeats : int, default=5
+        Subsampling repeats for each distance method.
+    dist_methods : str or sequence of str, default=("pearson", "cosine")
+        kNN similarity/distance methods used by the ensemble.
+    BPPARAM : object or None, default=None
+        Accepted for R API compatibility; currently ignored.
+    out_col : str, default="hier_label"
+        Destination column in ``spe.obs``.
+    chunk_size : int, default=1000
+        Number of active cells routed together.
+    unassigned_label : str, default="Unassigned"
+        Label for cells failing confidence or agreement thresholds.
+
+    Returns
+    -------
+    anndata.AnnData
+        The annotated input object.
     """
     del BPPARAM
     frame = expression_frame(spe, assay_name)

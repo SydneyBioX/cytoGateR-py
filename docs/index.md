@@ -53,8 +53,9 @@ labels = result["hard_label"]
 probabilities = result["prob_mat"]
 ```
 
-See {doc}`getting-started` for the expected data layout and {doc}`tutorial` for
-a complete, executable example.
+See {doc}`getting-started` for the expected data layout, {doc}`tutorial` for a
+small executable example, and {doc}`full_pipeline` for the complete workflow
+using the R package's demonstration data.
 
 ```{toctree}
 :maxdepth: 2
@@ -62,5 +63,7 @@ a complete, executable example.
 
 getting-started
 tutorial
+full_pipeline
 api
+maintaining
 ```

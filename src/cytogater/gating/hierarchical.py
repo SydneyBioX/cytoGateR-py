@@ -10,7 +10,24 @@ from ..preprocessing import expression_frame
 def build_lineage_hierarchy(
     spe, label_col="cleaned_core_label", assay_name="exprs"
 ):
-    """Build a complete-linkage hierarchy from cell-type pseudobulks."""
+    """Build a complete-linkage hierarchy from cell-type pseudobulks.
+
+    Parameters
+    ----------
+    spe : anndata.AnnData
+        Annotated cells-by-markers object.
+    label_col : str, default="cleaned_core_label"
+        ``spe.obs`` column containing cleaned reference labels. Missing and
+        ``"Unknown"`` labels are excluded.
+    assay_name : str or None, default="exprs"
+        Expression layer, or ``None``/``"X"`` for ``spe.X``.
+
+    Returns
+    -------
+    dict
+        ``linkage`` contains the SciPy complete-linkage matrix and ``labels``
+        gives the corresponding cell-type leaf names.
+    """
     frame = expression_frame(spe, assay_name)
     labels = spe.obs[label_col]
     keep = labels.notna() & (labels.astype(str) != "Unknown")
@@ -35,7 +52,33 @@ def build_hierarchical_reference(
     assay_name="exprs",
     unknown_label="Unassigned",
 ):
-    """Create the binary training reference for every hierarchy node."""
+    """Create a binary training reference for every hierarchy node.
+
+    Parameters
+    ----------
+    spe : anndata.AnnData
+        Annotated cells-by-markers object.
+    hc_tree : dict
+        Hierarchy returned by :func:`build_lineage_hierarchy`.
+    marker_stats : dict or None, default=None
+        Optional marker statistics from gating. When supplied, node-specific
+        markers are ranked by weighted mean difference.
+    label_col : str, default="cleaned_core_label"
+        ``spe.obs`` column containing reference cell types.
+    top_n : int or None, default=5
+        Number of discriminating markers retained per node. ``None`` keeps all.
+    assay_name : str or None, default="exprs"
+        Expression layer, or ``None``/``"X"`` for ``spe.X``.
+    unknown_label : str, default="Unassigned"
+        Reference label excluded from training.
+
+    Returns
+    -------
+    dict
+        Entries named ``Node_*`` contain binary training data, labels, marker
+        names, descendant cell types, and cluster IDs. ``_root`` identifies
+        the root cluster.
+    """
     frame = expression_frame(spe, assay_name)
     labels = spe.obs[label_col].astype(object)
     keep = labels.notna() & (labels != unknown_label)

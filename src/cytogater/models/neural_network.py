@@ -28,7 +28,52 @@ def train_custom_dl(
     seed=None,
     **kwargs,
 ):
-    """Train a small probability network; PyTorch is imported only when used."""
+    """Train a small feed-forward probability network.
+
+    PyTorch is an optional dependency and is imported only when this function
+    is called.
+
+    Parameters
+    ----------
+    spe : anndata.AnnData
+        Annotated cells-by-markers object.
+    label_col : str, default="cutoff_label"
+        ``spe.obs`` column containing training labels.
+    assay_name : str or None, default="exprs"
+        Expression layer, or ``None``/``"X"`` for ``spe.X``.
+    unknown_label : str, default="Unknown"
+        Label excluded from training.
+    features : "all" or sequence of str, default="all"
+        Marker features used by the network.
+    hidden_dims : sequence of int, default=(64, 32)
+        Width of each hidden layer.
+    dropout : float, default=0.3
+        Dropout probability after each hidden activation.
+    epochs : int, default=50
+        Training epochs.
+    lr : float, default=1e-3
+        Adam learning rate.
+    weight_decay : float, default=1e-4
+        Adam L2 weight decay.
+    batch_size : int, default=256
+        Mini-batch size.
+    cv_folds, repeats, agreement_thresh, val_frac, patience
+        Accepted for compatibility with the R workflow; currently unused.
+    verbose_training : bool, default=False
+        Print the loss after each epoch.
+    class_balanced_loss : bool, default=True
+        Weight cross-entropy inversely by class frequency.
+    seed : int or None, default=None
+        PyTorch random seed.
+    **kwargs
+        Additional options retained in the returned model metadata.
+
+    Returns
+    -------
+    dict
+        Input ``spe``, fitted network metadata, and feature names. The model
+        mapping includes the network, class levels, scaling values, and device.
+    """
     import torch
     from torch import nn
 
@@ -96,6 +141,35 @@ def predict_unknown_with_dl(
     threshold=0.5,
     unassigned_label="Unassigned",
 ):
+    """Fill unknown labels using a trained PyTorch network.
+
+    Parameters
+    ----------
+    spe : anndata.AnnData
+        Object containing cells to predict; modified in place.
+    model : dict
+        Network metadata returned in ``train_custom_dl(...)["model"]``.
+    assay_name : str or None, default="exprs"
+        Expression layer, or ``None``/``"X"`` for ``spe.X``.
+    label_col : str, default="custom_label"
+        Existing labels; only missing or ``unknown_label`` cells are replaced.
+    out_col : str, default="soft_tree_label_filled"
+        Destination for combined existing and predicted labels.
+    pred_col : str, default="dl_pred"
+        Destination for predictions on replaced cells only.
+    unknown_label : str, default="Unknown"
+        Label marking cells that require prediction.
+    threshold : float, default=0.5
+        Minimum winning softmax probability.
+    unassigned_label : str, default="Unassigned"
+        Label used below the confidence threshold.
+
+    Returns
+    -------
+    dict
+        Annotated ``spe`` and a probability matrix for predicted cells.
+        ``prob_mat`` is ``None`` when no cells require prediction.
+    """
     import torch
 
     frame = expression_frame(spe, assay_name)

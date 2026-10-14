@@ -26,6 +26,47 @@ def train_custom_randomforest(
     """Train the R-equivalent probability random forest.
 
     ``num.trees`` may be supplied through ``kwargs`` for direct R-call migration.
+
+    Parameters
+    ----------
+    spe : anndata.AnnData
+        Annotated cells-by-markers object, modified in place.
+    label_col : str, default="cutoff_label"
+        ``spe.obs`` column containing initial reference labels.
+    assay_name : str or None, default="exprs"
+        Expression layer, or ``None``/``"X"`` for ``spe.X``.
+    unknown_label : str, default="Unknown"
+        Label excluded from reference training.
+    num_trees : int, default=200
+        Trees in the final random forest.
+    mtry : int, float, str, or None, default=None
+        Features considered at each split; ``None`` uses ``"sqrt"``.
+    seed : int or None, default=None
+        Random seed for cross-validation and model fitting.
+    features : "all" or sequence of str, default="all"
+        Marker features used by the model.
+    cv_folds : int, default=5
+        Requested stratified folds, capped by the smallest eligible class.
+    repeats : int, default=10
+        Repeated cross-validation rounds.
+    agreement_thresh : float, default=0.8
+        Minimum correct out-of-fold fraction required to retain a reference.
+    num_threads : int, default=2
+        Parallel threads used by scikit-learn.
+    **kwargs
+        Compatibility arguments. ``num.trees`` overrides ``num_trees``.
+
+    Returns
+    -------
+    dict
+        Annotated ``spe``, fitted model, retained-cell probabilities,
+        agreement rates, and feature names. Cleaned labels are stored in
+        ``spe.obs["cleaned_core_label"]``.
+
+    Raises
+    ------
+    ValueError
+        If no label has at least two reference cells.
     """
     num_trees = kwargs.pop("num.trees", num_trees)
     frame = expression_frame(spe, assay_name)
@@ -105,6 +146,35 @@ def predict_unknown_with_randomforest(
     threshold=0.5,
     unassigned_label="Unassigned",
 ):
+    """Fill unknown labels using a trained random forest.
+
+    Parameters
+    ----------
+    spe : anndata.AnnData
+        Object containing cells to predict; modified in place.
+    model : sklearn.ensemble.RandomForestClassifier
+        Model returned in ``train_custom_randomforest(...)["model"]``.
+    assay_name : str or None, default="exprs"
+        Expression layer, or ``None``/``"X"`` for ``spe.X``.
+    label_col : str, default="custom_label"
+        Existing labels; only missing or ``unknown_label`` cells are replaced.
+    out_col : str, default="soft_tree_label_filled"
+        Destination for combined existing and predicted labels.
+    pred_col : str, default="rf_pred"
+        Destination for predictions on replaced cells only.
+    unknown_label : str, default="Unknown"
+        Label marking cells that require prediction.
+    threshold : float, default=0.5
+        Minimum winning class probability.
+    unassigned_label : str, default="Unassigned"
+        Label used below the confidence threshold.
+
+    Returns
+    -------
+    dict
+        Annotated ``spe`` and a probability matrix for predicted cells.
+        ``prob_mat`` is ``None`` when no cells require prediction.
+    """
     frame = expression_frame(spe, assay_name)
     # AnnData commonly round-trips string observation columns as Categoricals.
     # Prediction may introduce a model class or ``Unassigned`` that is not an
@@ -131,12 +201,39 @@ def predict_unknown_with_randomforest(
 
 
 def rf_metric_table(fit):
+    """Extract per-class classification metrics from a model result.
+
+    Parameters
+    ----------
+    fit : dict
+        Result containing cached cross-validation metrics or true/predicted
+        test labels accepted by :func:`cytogater.class_metrics_from_fit`.
+
+    Returns
+    -------
+    dict
+        Mapping with a ``class`` data frame of precision, recall, and F1.
+    """
     from ..metrics import class_metrics_from_fit
     class_table = class_metrics_from_fit(fit)
     return {"class": class_table}
 
 
 def rf_metric_text(fit, digits=3):
+    """Format random-forest class metrics as readable text lines.
+
+    Parameters
+    ----------
+    fit : dict
+        Model result accepted by :func:`rf_metric_table`.
+    digits : int, default=3
+        Decimal places used for metric values.
+
+    Returns
+    -------
+    list of str
+        One precision/recall/F1 summary per class.
+    """
     table = rf_metric_table(fit)["class"]
     return [
         f"{row['class']}: precision={row.precision:.{digits}f}, "

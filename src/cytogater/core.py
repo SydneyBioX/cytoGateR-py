@@ -33,7 +33,23 @@ def _lineage(lineage_table, markers):
 
 
 def gmm_equal_posterior_cutoff(mu1, mu2, s1, s2, p1, p2):
-    """Cutoff between two Gaussian components with equal posterior density."""
+    """Find the equal-posterior cutoff between two Gaussian components.
+
+    Parameters
+    ----------
+    mu1, mu2 : float
+        Component means, normally ordered from low to high.
+    s1, s2 : float
+        Component standard deviations.
+    p1, p2 : float
+        Component mixing proportions.
+
+    Returns
+    -------
+    float
+        A root between the two means where the weighted component densities
+        are equal. Falls back to the midpoint when no suitable root exists.
+    """
     values = np.asarray([mu1, mu2, s1, s2, p1, p2], dtype=float)
     midpoint = float(np.mean([mu1, mu2]))
     if not np.isfinite(values).all() or s1 <= 0 or s2 <= 0:
@@ -130,6 +146,29 @@ def fit_gmm_2(x, cutoff_method="mean", gmm_model_names=None):
     unequal-variance ("V") models are fitted and the better BIC wins, except
     that variance-collapsed "V" fits are discarded first. ``gmm_model_names``
     accepts "E" or "V" to pin the model, matching R's ``modelNames``.
+
+    Parameters
+    ----------
+    x : array-like
+        One-dimensional marker-expression values. Non-finite values are
+        removed before fitting.
+    cutoff_method : {"mean", "equal_posteriors"}, default="mean"
+        Rule for placing the cutoff between fitted components.
+    gmm_model_names : {"E", "V"} or None, default=None
+        Restrict fitting to equal (``"E"``) or unequal (``"V"``) component
+        variances. By default both models are compared by BIC.
+
+    Returns
+    -------
+    dict or None
+        Fitted means, standard deviations, weights, cutoff, and separation
+        score. Returns ``None`` when fewer than 50 usable observations, fewer
+        than three unique values, or no valid model is available.
+
+    Raises
+    ------
+    ValueError
+        If ``gmm_model_names`` is not ``"E"``, ``"V"``, or ``None``.
     """
     x = np.asarray(x, dtype=float)
     x = x[np.isfinite(x)]
@@ -182,21 +221,83 @@ def fit_gmm_2(x, cutoff_method="mean", gmm_model_names=None):
 
 
 def marker_separability(x):
+    """Measure separation between two fitted marker-expression components.
+
+    Parameters
+    ----------
+    x : array-like
+        One-dimensional marker-expression values.
+
+    Returns
+    -------
+    float
+        Absolute difference between fitted component means divided by their
+        pooled standard deviation, or ``numpy.nan`` if fitting fails.
+    """
     fit = fit_gmm_2(x)
     return np.nan if fit is None else fit["sep_score"]
 
 
 def score_marker_logistic(x, cutoff, scale):
+    """Convert marker expression to a smooth positivity score.
+
+    Parameters
+    ----------
+    x : array-like
+        Marker-expression values.
+    cutoff : float
+        Expression value mapped to probability 0.5.
+    scale : float
+        Logistic transition scale; larger values produce a gentler change.
+
+    Returns
+    -------
+    numpy.ndarray
+        Values between zero and one with the same shape as ``x``.
+    """
     return expit((np.asarray(x, dtype=float) - cutoff) / scale)
 
 
 def score_marker_rank(x):
+    """Scale marker expression to fractional ranks.
+
+    Parameters
+    ----------
+    x : array-like
+        Marker-expression values.
+
+    Returns
+    -------
+    numpy.ndarray
+        Rank scores between zero and one. Missing values remain missing.
+    """
     values = pd.Series(np.asarray(x, dtype=float))
     ranks = values.rank(method="average", na_option="keep").to_numpy()
     return (ranks - 1) / (np.isfinite(ranks).sum() - 1 + 1e-9)
 
 
 def fit_marker_stats(spe, markers, assay_name="exprs", min_n=50):
+    """Fit gating statistics for a collection of markers.
+
+    Parameters
+    ----------
+    spe : anndata.AnnData
+        Cells-by-markers data object.
+    markers : sequence of str
+        Marker names to fit. Names absent from ``spe.var_names`` are skipped.
+    assay_name : str or None, default="exprs"
+        Layer containing expression values. Use ``None`` or ``"X"`` for
+        ``spe.X``.
+    min_n : int, default=50
+        Minimum finite observations required to attempt a two-component GMM.
+
+    Returns
+    -------
+    dict
+        Mapping from marker name to ``valid``, ``cutoff``, ``scale``,
+        ``weight``, and ``mu_high`` statistics. A robust quantile fallback is
+        returned when a marker cannot be fitted.
+    """
     x, marker_names = _expression(spe, assay_name)
     positions = {name: i for i, name in enumerate(marker_names)}
     result = {}
@@ -229,6 +330,21 @@ def fit_marker_stats(spe, markers, assay_name="exprs", min_n=50):
 
 
 def assign_soft_labels(prob_mat, unknown_thresh=0.4):
+    """Assign the highest-probability cell type to each cell.
+
+    Parameters
+    ----------
+    prob_mat : pandas.DataFrame or array-like
+        Cell-by-cell-type probability matrix. Data-frame column names become
+        output labels.
+    unknown_thresh : float, default=0.4
+        Minimum winning probability; cells below it become ``"Unknown"``.
+
+    Returns
+    -------
+    numpy.ndarray
+        One string label per row of ``prob_mat``.
+    """
     values = np.asarray(prob_mat)
     names = np.asarray(
         prob_mat.columns if hasattr(prob_mat, "columns")
@@ -242,6 +358,29 @@ def assign_soft_labels(prob_mat, unknown_thresh=0.4):
 def calculate_soft_scores(
     spe, marker_stats, lineage_table, assay_name="exprs", neg_strength=0.8
 ):
+    """Calculate marker-aware soft scores for every cell type.
+
+    Positive-marker scores are combined using marker separation weights, then
+    reduced by expression of negative markers.
+
+    Parameters
+    ----------
+    spe : anndata.AnnData
+        Cells-by-markers data object.
+    marker_stats : dict
+        Output from :func:`fit_marker_stats`.
+    lineage_table : pandas.DataFrame
+        Table containing ``cell_type``, ``pos_markers``, and ``neg_markers``.
+    assay_name : str or None, default="exprs"
+        Expression layer, or ``None``/``"X"`` to use ``spe.X``.
+    neg_strength : float, default=0.8
+        Strength of each negative-marker penalty.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Cell-by-cell-type score matrix indexed like ``spe.obs``.
+    """
     x, marker_names = _expression(spe, assay_name)
     positions = {name: i for i, name in enumerate(marker_names)}
     table = _lineage(lineage_table, marker_names)
@@ -282,7 +421,37 @@ def build_fullcoverage_tree(
     cutoff_method="mean",
     gmm_model_names=None,
 ):
-    """Build the same recursive marker-priority tree as cytoGateR R."""
+    """Build a recursive marker-priority gating tree.
+
+    Parameters
+    ----------
+    expr_mat : pandas.DataFrame or array-like
+        Cells-by-markers expression matrix.
+    markers_pos : sequence of str
+        Candidate positive markers used for recursive splits.
+    markers_neg : sequence of str, default=()
+        Negative markers used when forming the provisional split target.
+    cell_idx : array-like or None, default=None
+        Row positions assigned to the current node. The root uses all rows.
+    depth : int, default=0
+        Current recursion depth.
+    max_depth : int, default=4
+        Maximum tree depth.
+    min_cells : int, default=200
+        Minimum cells required to split a node.
+    min_score : float, default=0.5
+        Minimum marker separation score required for a split.
+    cutoff_method : {"mean", "equal_posteriors"}, default="mean"
+        GMM cutoff rule.
+    gmm_model_names : {"E", "V"} or None, default=None
+        Optional GMM variance-model restriction.
+
+    Returns
+    -------
+    dict
+        Nested node/leaf dictionaries containing split markers, cutoffs,
+        separation scores, cell indices, and child nodes.
+    """
     frame = expr_mat if isinstance(expr_mat, pd.DataFrame) else pd.DataFrame(expr_mat)
     markers_pos = [m for m in markers_pos if m in frame.columns]
     markers_neg = [m for m in markers_neg if m in frame.columns]
@@ -331,6 +500,22 @@ def build_fullcoverage_tree(
 
 
 def collect_path_scores(tree, expr_mat, cell_i):
+    """Collect logistic split scores along one cell's tree path.
+
+    Parameters
+    ----------
+    tree : dict
+        Tree returned by :func:`build_fullcoverage_tree`.
+    expr_mat : pandas.DataFrame or array-like
+        Cells-by-markers expression matrix used to build the tree.
+    cell_i : int
+        Positional row index of the cell.
+
+    Returns
+    -------
+    numpy.ndarray
+        One positivity score for each internal node visited by the cell.
+    """
     frame = expr_mat if isinstance(expr_mat, pd.DataFrame) else pd.DataFrame(expr_mat)
     scores, node = [], tree
     while node is not None and node["type"] == "node":
@@ -346,6 +531,26 @@ def collect_path_scores(tree, expr_mat, cell_i):
 def neg_penalty(
     expr_mat, neg_markers, cell_i, marker_stats=None, neg_strength=0.8
 ):
+    """Calculate the multiplicative negative-marker penalty for one cell.
+
+    Parameters
+    ----------
+    expr_mat : pandas.DataFrame or array-like
+        Cells-by-markers expression matrix.
+    neg_markers : sequence of str
+        Markers whose expression argues against the cell type.
+    cell_i : int
+        Positional row index of the cell.
+    marker_stats : dict or None, default=None
+        Per-marker cutoff and scale statistics.
+    neg_strength : float, default=0.8
+        Maximum penalty contributed by each negative marker.
+
+    Returns
+    -------
+    float
+        Combined penalty clipped to the interval zero to one.
+    """
     frame = expr_mat if isinstance(expr_mat, pd.DataFrame) else pd.DataFrame(expr_mat)
     marker_stats = marker_stats or {}
     penalty = 1.0
@@ -369,6 +574,33 @@ def tree_prob(
     neg_strength=0.8,
     lambda_=2,
 ):
+    """Calculate one cell's probability for a marker-priority tree.
+
+    Parameters
+    ----------
+    tree : dict
+        Tree returned by :func:`build_fullcoverage_tree`.
+    expr_mat : pandas.DataFrame or array-like
+        Cells-by-markers expression matrix.
+    cell_i : int
+        Positional row index of the cell.
+    combine : {"mean", "product"}, default="mean"
+        How to combine scores along the tree path. Values other than ``mean``
+        use the product.
+    neg_markers : sequence of str, default=()
+        Negative markers used to penalise the path score.
+    marker_stats : dict or None, default=None
+        Per-marker statistics used by the negative-marker penalty.
+    neg_strength : float, default=0.8
+        Negative-marker penalty strength.
+    lambda_ : float, default=2
+        Shrinkage applied to short tree paths.
+
+    Returns
+    -------
+    float
+        Cell-type probability, or ``numpy.nan`` for a path without scores.
+    """
     scores = collect_path_scores(tree, expr_mat, cell_i)
     scores = scores[np.isfinite(scores)]
     if not len(scores):
@@ -383,6 +615,28 @@ def tree_prob(
 def run_soft_gating(
     spe, lineage_table, assay_name="exprs", unknown_thresh=0.4, store=True
 ):
+    """Run soft marker gating for all cell types.
+
+    Parameters
+    ----------
+    spe : anndata.AnnData
+        Cells-by-markers data object. Modified in place when ``store=True``.
+    lineage_table : pandas.DataFrame
+        Cell types and their positive and negative markers.
+    assay_name : str or None, default="exprs"
+        Expression layer, or ``None``/``"X"`` for ``spe.X``.
+    unknown_thresh : float, default=0.4
+        Minimum winning score required for a non-unknown label.
+    store : bool, default=True
+        Store probabilities and labels in ``spe.obs``, ``spe.obsm``, and
+        ``spe.uns``.
+
+    Returns
+    -------
+    dict
+        Annotated ``spe``, marker statistics, probability matrix, labels, and
+        cleaned lineage table.
+    """
     x, markers = _expression(spe, assay_name)
     del x
     table = _lineage(lineage_table, markers)
@@ -416,7 +670,41 @@ def run_tree_gating(
     gmm_model_names=None,
     workers=1,
 ):
-    """Run tree gating; parameters and defaults align with the R function."""
+    """Run marker-priority tree gating for all cell types.
+
+    Parameters and defaults align with the R implementation.
+
+    Parameters
+    ----------
+    spe : anndata.AnnData
+        Cells-by-markers data object. Results are stored on this object.
+    lineage_table : pandas.DataFrame
+        Cell types and their positive and negative markers.
+    assay_name : str or None, default="exprs"
+        Expression layer, or ``None``/``"X"`` for ``spe.X``.
+    max_depth : int, default=4
+        Maximum depth of each cell-type gating tree.
+    min_cells : int, default=200
+        Minimum cells required to split a tree node.
+    min_score : float, default=0.5
+        Minimum marker separation required for a split.
+    uncert_thresh : float, default=0.25
+        Minimum winning probability for a hard cell-type label.
+    neg_strength : float, default=0.4
+        Strength of negative-marker penalties.
+    cutoff_method : {"mean", "equal_posteriors"}, default="mean"
+        GMM cutoff rule.
+    gmm_model_names : {"E", "V"} or None, default=None
+        Optional GMM variance-model restriction.
+    workers : int, default=1
+        Accepted for R API compatibility; execution is currently serial.
+
+    Returns
+    -------
+    dict
+        Annotated ``spe``, one tree per cell type, probability matrix, hard
+        labels, and cleaned lineage table.
+    """
     del workers  # Retained for API alignment; compact implementation is serial.
     x, markers = _expression(spe, assay_name)
     frame = pd.DataFrame(x, index=spe.obs_names, columns=markers)
@@ -471,4 +759,3 @@ def run_tree_gating(
         "spe": spe, "trees": trees, "prob_mat": probabilities,
         "hard_label": hard_label, "lineage_table": table,
     }
-
